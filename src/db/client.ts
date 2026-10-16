@@ -9,7 +9,11 @@ type AnyDb = PgDatabase<PgQueryResultHKT, typeof schema>;
  *  - pglite:./.pglite                   → 로컬 개발·테스트용 내장 PostgreSQL (PGlite)
  */
 export async function createDb(url: string | undefined): Promise<AnyDb> {
-  if (!url) throw new Error("DATABASE_URL 환경변수가 설정되지 않았습니다.");
+  if (!url) {
+    throw new Error(
+      "DATABASE_URL 환경변수가 설정되지 않았습니다. 로컬은 .env, Vercel 은 Project Settings → Environment Variables 에 설정하세요. (/api/health 로 점검 가능)",
+    );
+  }
 
   if (url.startsWith("pglite:")) {
     const dir = url.slice("pglite:".length) || "./.pglite";

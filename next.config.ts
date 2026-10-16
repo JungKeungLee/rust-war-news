@@ -30,6 +30,8 @@ const csp = [
 const nextConfig: NextConfig = {
   poweredByHeader: false,
   serverExternalPackages: ["@electric-sql/pglite"],
+  // /api/health 가 마이그레이션 수를 비교할 수 있도록 저널 파일을 배포 번들에 포함
+  outputFileTracingIncludes: { "/api/health": ["./drizzle/meta/_journal.json"] },
   turbopack: {
     rules: {
       "*.css": {

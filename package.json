@@ -13,7 +13,8 @@
     "db:seed-anchors": "tsx scripts/seed-anchors.ts",
     "db:seed-demo": "tsx scripts/seed-demo.ts",
     "typecheck": "tsc --noEmit",
-    "test:e2e": "node tests/e2e.mjs"
+    "test:e2e": "node tests/e2e.mjs",
+    "db:info": "tsx scripts/db-info.ts"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.5.10",
