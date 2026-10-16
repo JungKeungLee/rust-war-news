@@ -5,6 +5,8 @@ import { articles, breakingNews, episodes, events, overlayStates, rundownItems, 
 import type { OverlayKey } from "@/lib/labels";
 import type { LiveBreaking, OverlayState, PublicLiveState } from "@/lib/live/types";
 import { getSettings } from "./settings";
+import { toPublicBroadcast } from "@/lib/broadcast";
+import { siteHostFromEnv } from "@/lib/clips/embed";
 import { articleVisible, breakingActive } from "./visibility";
 
 /**
@@ -38,6 +40,7 @@ export async function getPublicLiveState(db: DB): Promise<PublicLiveState> {
   const [settings, breaking] = await Promise.all([getSettings(db), getActiveBreaking(db)]);
   return {
     serverTime: new Date().toISOString(),
+    broadcast: toPublicBroadcast(settings.broadcast, settings.broadcastMeta.updatedAt, siteHostFromEnv()),
     live: settings.live,
     notice: settings.notice.text,
     breaking,

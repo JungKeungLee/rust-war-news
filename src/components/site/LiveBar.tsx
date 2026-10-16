@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { useLiveState } from "@/lib/live/client";
 import type { PublicLiveState } from "@/lib/live/types";
 import { fmtTime } from "@/lib/format";
@@ -8,8 +9,11 @@ import { fmtTime } from "@/lib/format";
 /** 상단 실시간 속보 티커 + LIVE 표시. 4초 폴링으로 갱신된다. */
 export function LiveBar({ initial }: { initial: PublicLiveState }) {
   const { data, error } = useLiveState(initial);
+  const pathname = usePathname();
   const state = data ?? initial;
   const items = state.breaking;
+  // 메인 페이지는 방송 플레이어 아래에 자체 속보 티커를 두므로 헤더 티커를 숨긴다
+  if (pathname === "/") return null;
 
   return (
     <div className="border-b border-line bg-[#0a0f1b]" aria-live="polite">

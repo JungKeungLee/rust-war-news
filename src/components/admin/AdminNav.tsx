@@ -8,6 +8,8 @@ import { useAdmin } from "./AdminContext";
 const ITEMS: { href: string; label: string; perm: Permission }[] = [
   { href: "/admin", label: "대시보드", perm: "admin.access" },
   { href: "/admin/control-room", label: "방송 지통실", perm: "admin.access" },
+  { href: "/admin/broadcast", label: "메인 방송 설정", perm: "broadcast.manage" },
+  { href: "/admin/team-status", label: "팀별 지통실", perm: "teamstatus.manage" },
   { href: "/admin/reports", label: "제보 검토", perm: "reports.review" },
   { href: "/admin/incidents", label: "사건 관리", perm: "incidents.manage" },
   { href: "/admin/breaking", label: "속보 관리", perm: "breaking.manage" },

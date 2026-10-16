@@ -41,7 +41,9 @@ const version = () => integer("version").notNull().default(1);
 /* ------------------------------------------------------------------ */
 
 export const roleCode = pgEnum("role_code", ["SUPER_ADMIN", "EDITOR", "ANCHOR", "OPERATOR"]);
-export const incidentType = pgEnum("incident_type", ["BATTLE", "RAID", "ALLIANCE", "BETRAYAL", "INCIDENT", "OTHER"]);
+export const incidentType = pgEnum("incident_type", ["BATTLE", "RAID", "ALLIANCE", "BETRAYAL", "INCIDENT", "OTHER", "DEFENSE"]);
+/** 공개 지통실의 팀 현재 상태 (방송국이 확인·발행한 상태) */
+export const teamPublicStatus = pgEnum("team_public_status", ["UNKNOWN", "NORMAL", "INCIDENT", "ALERT"]);
 export const verificationStatus = pgEnum("verification_status", [
   "UNVERIFIED",
   "VERIFYING",
@@ -184,6 +186,13 @@ export const teams = pgTable(
     score: integer("score").notNull().default(0),
     isEliminated: boolean("is_eliminated").notNull().default(false),
     isPublic: boolean("is_public").notNull().default(true),
+    /** 공개 지통실 팀 상태. status_is_public 이 false 면 공개 화면에는 UNKNOWN 으로 보인다 */
+    publicStatus: teamPublicStatus("public_status").notNull().default("UNKNOWN"),
+    statusMessage: text("status_message"),
+    statusIsPublic: boolean("status_is_public").notNull().default(false),
+    statusIncidentId: uuid("status_incident_id").references((): AnyPgColumn => incidents.id, { onDelete: "set null" }),
+    statusUpdatedBy: uuid("status_updated_by").references(() => users.id, { onDelete: "set null" }),
+    statusUpdatedAt: ts("status_updated_at"),
     version: version(),
     createdAt: createdAt(),
     updatedAt: updatedAt(),

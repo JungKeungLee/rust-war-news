@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import type { Settings } from "@/server/settings";
 import { useAdmin, useApiErrorHandler } from "./AdminContext";
 import { Field, Toggle } from "./forms";
@@ -8,7 +9,6 @@ import { Field, Toggle } from "./forms";
 export function SettingsForm({ initial }: { initial: Settings }) {
   const { api, toast } = useAdmin();
   const onError = useApiErrorHandler();
-  const [live, setLive] = useState(initial.live);
   const [notice, setNotice] = useState(initial.notice.text ?? "");
   const [intake, setIntake] = useState(initial.intake);
 
@@ -24,17 +24,11 @@ export function SettingsForm({ initial }: { initial: Settings }) {
   return (
     <div className="grid gap-4 lg:grid-cols-3">
       <section className="panel flex flex-col gap-3 p-4">
-        <h2 className="font-bold">LIVE 방송 표시</h2>
-        <Toggle checked={live.isLive} onChange={(v) => setLive({ ...live, isLive: v })} label="사이트에 LIVE 표시" />
-        <Field label="방송 링크">
-          <input className="field" value={live.url ?? ""} onChange={(e) => setLive({ ...live, url: e.target.value || null })} placeholder="https://" />
-        </Field>
-        <Field label="방송 제목">
-          <input className="field" value={live.title ?? ""} onChange={(e) => setLive({ ...live, title: e.target.value || null })} maxLength={80} />
-        </Field>
-        <button className="btn btn-red self-start" onClick={() => save("live", live)}>
-          저장
-        </button>
+        <h2 className="font-bold">메인 방송 · LIVE 표시</h2>
+        <p className="text-sm text-muted">방송 URL·상태·오프라인 안내는 방송 설정 메뉴에서 관리합니다. 사이트 상단 LIVE 표시는 방송 상태가 LIVE 일 때 자동으로 켜집니다.</p>
+        <Link href="/admin/broadcast" className="btn self-start">
+          방송 설정으로 이동
+        </Link>
       </section>
       <section className="panel flex flex-col gap-3 p-4">
         <h2 className="font-bold">상단 공지</h2>

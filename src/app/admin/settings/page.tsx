@@ -10,7 +10,7 @@ export default async function AdminSettingsPage() {
   const settings = await getSettings(await getDb());
   return (
     <>
-      <AdminTitle title="사이트 설정" desc="LIVE 표시·방송 링크, 상단 공지, 제보·클립 접수 여부를 설정합니다. 방송 회차를 시작·종료하면 LIVE 표시가 자동으로 바뀝니다." />
+      <AdminTitle title="사이트 설정" desc="상단 공지와 제보·클립 접수 여부를 설정합니다. 메인 방송은 방송 설정 메뉴에서 관리합니다." />
       <SettingsForm initial={settings} />
     </>
   );

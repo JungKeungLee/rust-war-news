@@ -428,10 +428,10 @@ async function main() {
   // ---------- 16 ----------
   scenario(16, "아카이브 공개");
   r = await viewer.get("/archive");
-  check(r.data.includes(epTitle), "아카이브 페이지에 종료 회차 공개");
+  check(r.data.includes(`>${epTitle}<`), "아카이브 페이지에 종료 회차 공개");
   r = await adminA.patch(`/api/admin/episodes/${epId}`, { action: "archive", version: ep.episode.version, isPublic: false });
   r = await viewer.get("/archive");
-  check(!r.data.includes(epTitle), "아카이브 비공개 전환 시 숨김");
+  check(!r.data.includes(`>${epTitle}<`), "아카이브 비공개 전환 시 숨김");
   r = await adminA.patch(`/api/admin/episodes/${epId}`, { action: "archive", version: r.status ? (await adminA.get(`/api/admin/episodes/${epId}`)).data.episode.version : 0, isPublic: true });
   check(r.status === 200, "다시 공개");
 
@@ -516,8 +516,10 @@ async function main() {
   check([302, 307, 308].includes(r.status) && (r.headers.get("location") ?? "").includes("/login"), "비로그인 /admin → 로그인으로 리다이렉트", r.status);
   r = await anchorC.get("/api/admin/users");
   check(r.status === 403, "진행자 → 계정 관리 API 403", r.status);
-  r = await anchorC.post("/api/admin/breaking", { title: "권한 없음", body: null, priority: "NORMAL", verificationStatus: "UNVERIFIED", incidentId: null, isPinned: false, showOnOverlay: true, startsAt: null, endsAt: null, publish: "now" });
-  check(r.status === 403, "진행자 → 속보 송출 403", r.status);
+  r = await anchorC.patch("/api/admin/broadcast", { url: null, title: null, description: null, thumbnailUrl: null, status: "LIVE", offlineMessage: null, isPublic: true, expectedUpdatedAt: null });
+  check(r.status === 403, "진행자 → 메인 방송 설정 403", r.status);
+  r = await anchorC.patch("/api/admin/settings", { key: "notice", value: { text: "권한 없음" } });
+  check(r.status === 403, "진행자 → 사이트 설정 403", r.status);
   r = await adminA.post("/api/admin/incidents", { title: "CSRF 없음" }, { headers: { "x-csrf-token": "" } });
   check(r.status === 403, "CSRF 토큰 없는 관리자 요청 403", r.data);
   r = await adminA.post("/api/admin/incidents", { title: "외부 출처" }, { origin: "https://evil.example.com" });
@@ -545,6 +547,163 @@ async function main() {
   check(limited, "제보 도배 요청 제한(429)");
   r = await anon.get("/api/reports");
   check(!JSON.stringify(r.data).includes("submitterIpHash") && !JSON.stringify(r.data).includes("rejectReason"), "공개 제보 API에 IP 해시·반려 사유 미노출");
+
+  // ---------- 메인 방송 ----------
+  scenario("B", "메인 방송 플레이어 (단일 방송·관리자 URL·상태)");
+  let bc = (await adminA.get("/api/admin/broadcast")).data;
+  check(bc.broadcast && bc.preview, "관리자 방송 설정 조회", bc);
+  const saveB = (body, who = adminA) => who.patch("/api/admin/broadcast", { url: null, title: null, description: null, thumbnailUrl: null, offlineMessage: null, isPublic: true, ...body, expectedUpdatedAt: bc.updatedAt });
+  r = await saveB({ url: "https://play.sooplive.co.kr/rwnnews", title: "RWN 저녁 뉴스 LIVE", status: "LIVE" });
+  check(r.status === 200, "SOOP 방송 URL·LIVE 저장", r.data);
+  const staleStamp = bc.updatedAt;
+  bc = { ...bc, updatedAt: r.data.updatedAt };
+  r = await adminB.patch("/api/admin/broadcast", { url: null, title: "덮어쓰기", description: null, thumbnailUrl: null, status: "OFFLINE", offlineMessage: null, isPublic: true, expectedUpdatedAt: staleStamp });
+  check(r.status === 409, "다른 관리자가 옛 버전으로 저장 → 409", r.status);
+  r = await viewer.get("/api/live");
+  check(
+    r.data.broadcast.status === "LIVE" && r.data.broadcast.statusSource === "MANUAL" && r.data.broadcast.embedUrl === "https://play.sooplive.com/rwnnews/embed?autoPlay=true&mutePlay=true" && r.data.live.isLive === true,
+    "공개 상태: LIVE(수동) + SOOP 임베드 주소",
+    r.data.broadcast,
+  );
+  let home = await viewer.get("/");
+  const embeds = (home.data.match(/play\.sooplive\.com\/rwnnews\/embed/g) ?? []).length;
+  const iframes = (home.data.match(/<iframe/g) ?? []).length;
+  const playerIframes = (home.data.match(/<iframe[^>]*src="https:\/\/play\.sooplive\.com\/rwnnews\/embed/g) ?? []).length;
+  check(iframes === 1 && playerIframes === 1 && embeds >= 1, "메인 페이지 방송 플레이어 iframe 정확히 1개", { embeds, iframes, playerIframes });
+  check(!/난워니 방송|김옥독 방송|방송 전환|2분할/.test(home.data), "진행자별 전환 탭·2분할 UI 없음");
+  const iPlayer = home.data.indexOf("play.sooplive.com/rwnnews/embed");
+  const iTicker = home.data.indexOf("현재 송출 중인 속보가 없습니다") >= 0 ? home.data.indexOf("현재 송출 중인 속보가 없습니다") : home.data.indexOf("ticker-track");
+  const iTeams = home.data.indexOf("팀별 지통실");
+  check(iPlayer > 0 && iTicker > iPlayer && iTeams > iTicker, "배치: 플레이어 → 속보 티커 → 팀별 지통실", { iPlayer, iTicker, iTeams });
+  r = await saveB({ url: "https://play.sooplive.co.kr/rwnnews", title: "RWN", status: "OFFLINE", offlineMessage: "오늘 방송은 종료되었습니다." });
+  bc = { ...bc, updatedAt: r.data.updatedAt };
+  r = await viewer.get("/api/live");
+  check(r.data.broadcast.status === "OFFLINE" && r.data.live.isLive === false, "OFFLINE 상태 반영 (LIVE 표시 해제)", r.data.broadcast.status);
+  home = await viewer.get("/");
+  check(!home.data.includes("<iframe") && home.data.includes("오늘 방송은 종료되었습니다.") && home.data.includes("OFF AIR"), "OFFLINE 화면: 플레이어 대신 안내 문구");
+  r = await saveB({ url: null, status: "STANDBY" });
+  bc = { ...bc, updatedAt: r.data.updatedAt };
+  home = await viewer.get("/");
+  check(home.status === 200 && home.data.includes("현재 뉴스 방송을 준비 중입니다") && home.data.includes("STANDBY"), "URL 미설정·STANDBY: 기본 대기 화면 (오류 없음)");
+  r = await saveB({ url: "https://chzzk.naver.com/live/abcdef1234", status: "LIVE" });
+  bc = { ...bc, updatedAt: r.data.updatedAt };
+  r = await viewer.get("/api/live");
+  check(r.data.broadcast.embedUrl === null && (r.data.broadcast.url ?? "").startsWith("https://chzzk.naver.com/") && r.data.broadcast.platform === "CHZZK", "임베드 불가 플랫폼 → 원본 링크만", r.data.broadcast);
+  home = await viewer.get("/");
+  check(!home.data.includes("<iframe") && home.data.replace(/<!-- -->/g, "").includes("치지직에서 시청하기"), "임베드 불가 시 외부 시청 링크 표시");
+  r = await saveB({ url: "https://play.sooplive.co.kr/rwnnews", status: "LIVE", isPublic: false });
+  bc = { ...bc, updatedAt: r.data.updatedAt };
+  r = await viewer.get("/api/live");
+  check(r.data.broadcast.url === null && r.data.broadcast.embedUrl === null && r.data.live.isLive === false, "비공개 방송: URL 숨김", r.data.broadcast);
+  r = await saveB({ url: "javascript:alert(1)", status: "LIVE" });
+  check(r.status === 400, "위험한 URL 거부", r.status);
+  r = await saveB({ url: "https://play.sooplive.co.kr/rwnnews", status: "STANDBY", title: "RWN 뉴스" });
+  bc = { ...bc, updatedAt: r.data.updatedAt };
+  r = await viewer.get("/api/live");
+  const etagLive = r.headers.get("etag");
+  r = await viewer.get("/api/live", { headers: { "if-none-match": etagLive } });
+  check(etagLive && r.status === 304, "변경 없으면 304 (응답 최소화)", [etagLive, r.status]);
+  r = await viewer.get("/api/live");
+  check((r.headers.get("cache-control") ?? "").includes("s-maxage=2"), "실시간 API CDN 캐시 2초", r.headers.get("cache-control"));
+
+  // ---------- 공개 지통실 ----------
+  scenario("C", "공개 종합·팀별 지통실 (권한·공개 범위·팀 분리)");
+  const allTeams = (await adminA.get("/api/admin/teams")).data;
+  const evTeams = allTeams.teams.filter((t) => t.eventId === activeEvent.id && t.isPublic);
+  const [tA, tB, tC] = evTeams;
+  let ov = await anon.get("/api/control-room");
+  check(ov.status === 200 && ov.data.teams.length === evTeams.length, "비로그인 종합 지통실 API: 실제 팀 수와 일치", [ov.data.teams?.length, evTeams.length]);
+  r = await anon.get("/control-room");
+  const crHtml = r.data;
+  check(r.status === 200 && evTeams.every((t) => crHtml.includes(t.name)), "비로그인 종합 지통실 페이지: 모든 팀 카드");
+  const newTeamName = `신규팀${stamp}`;
+  r = await adminA.post("/api/admin/teams", { eventId: activeEvent.id, name: newTeamName, shortName: null, color: "#a855f7", logoUrl: null, description: "새 참가 팀", statusLabel: null, score: 0, isEliminated: false, isPublic: true });
+  const newTeam = r.data.team;
+  ov = await anon.get("/api/control-room");
+  check(ov.data.teams.some((t) => t.name === newTeamName), "팀 추가 시 지통실 목록 자동 반영");
+  const roster = allTeams.members
+    .filter((m) => m.teamId === tA.id && !m.leftAt)
+    .map((m) => allTeams.players.find((p) => p.id === m.playerId).nickname)
+    .sort();
+  let tr = await anon.get(`/api/control-room/${tA.id}`);
+  check(tr.status === 200 && JSON.stringify(tr.data.players.map((p) => p.nickname).sort()) === JSON.stringify(roster), "팀별 선수 명단 정확", [tr.data.players?.map((p) => p.nickname), roster]);
+  check(tr.data.players.every((p) => p.streamStatus === "UNVERIFIED"), "선수 방송 상태는 임의 LIVE 표시 없음 (확인 안 됨)");
+  r = await anon.get(`/control-room/${tA.id}`);
+  check(r.status === 200 && r.data.includes(tA.name), "비로그인 팀별 지통실 페이지");
+
+  const mkInc = (title, teamIds, extra = {}) =>
+    adminA.post("/api/admin/incidents", { title, type: "BATTLE", eventId: activeEvent.id, summary: `${title} 요약`, occurredAt: new Date().toISOString(), verificationStatus: "CONFIRMED", isPublic: true, publishAt: null, isSensitive: false, isClosed: false, teamIds, ...extra });
+  const pubTitle = `공개 교전 ${stamp}`;
+  const privTitle = `비공개 작전 ${stamp}`;
+  const futTitle = `예약 공개 ${stamp}`;
+  const allyTitle = `동맹 체결 ${stamp}`;
+  const incAB = (await mkInc(pubTitle, [tA.id, tB.id])).data.incident;
+  const incPriv = (await mkInc(privTitle, [tA.id], { isPublic: false, summary: "거점 좌표 X:123 Y:456" })).data.incident;
+  await mkInc(futTitle, [tA.id], { publishAt: new Date(Date.now() + 3600_000).toISOString() });
+  await mkInc(allyTitle, [tA.id, tC.id], { type: "ALLIANCE" });
+  const brAB = `교전 속보 ${stamp}`;
+  const brPriv = `비공개 사건 속보 ${stamp}`;
+  await adminA.post("/api/admin/breaking", { title: brAB, body: null, priority: "URGENT", verificationStatus: "CONFIRMED", incidentId: incAB.id, isPinned: false, showOnOverlay: false, startsAt: null, endsAt: null, publish: "now" });
+  await adminA.post("/api/admin/breaking", { title: brPriv, body: null, priority: "NORMAL", verificationStatus: "UNVERIFIED", incidentId: incPriv.id, isPinned: false, showOnOverlay: false, startsAt: null, endsAt: null, publish: "now" });
+  const pendingReport = `미승인 제보 ${stamp}`;
+  const fdP = new FormData();
+  fdP.set("type", "RAID");
+  fdP.set("title", pendingReport);
+  fdP.set("body", "아직 검토되지 않은 제보 본문입니다.");
+  fdP.set("elapsedMs", "5000");
+  fdP.append("teamIds", tA.id);
+  await client("203.0.113.90").req("POST", "/api/reports", { form: fdP });
+
+  const [jA, jB, jC] = await Promise.all([tA, tB, tC].map((t) => anon.get(`/api/control-room/${t.id}`)));
+  const titlesOf = (j) => j.data.incidents.map((i) => i.title);
+  check(titlesOf(jA).includes(pubTitle) && titlesOf(jB).includes(pubTitle) && !titlesOf(jC).includes(pubTitle), "여러 팀 사건: 연결된 두 팀 모두 표시, 무관한 팀엔 없음");
+  const incInA = jA.data.incidents.find((i) => i.title === pubTitle);
+  check(incInA && incInA.teams.map((t) => t.id).sort().join() === [tA.id, tB.id].sort().join(), "사건의 관련 팀 표시 정확");
+  check(jA.data.breaking.some((b) => b.title === brAB) && jB.data.breaking.some((b) => b.title === brAB) && !jC.data.breaking.some((b) => b.title === brAB), "팀별 속보 필터 정확 (A·B만)");
+  const allPublicJson = JSON.stringify([jA.data, jB.data, jC.data, (await anon.get("/api/control-room")).data]);
+  check(!allPublicJson.includes(privTitle) && !allPublicJson.includes("X:123"), "비공개 사건·민감 요약 미노출");
+  const teamJson = JSON.stringify([jA.data, jB.data, jC.data]);
+  check(!teamJson.includes(brPriv) && !JSON.stringify(ov.data.breaking ?? []).includes(incPriv.id), "공개 속보라도 비공개 사건을 통한 팀 연결·사건 ID 미노출");
+  check(!allPublicJson.includes(futTitle), "공개 예정 시각 전 사건 미노출");
+  check(!allPublicJson.includes(pendingReport), "미승인 제보 미노출");
+  check(!/@rwn\.local|@example\.com|rejectReason|adminNote|submitterIpHash|passwordHash|제보왕/.test(allPublicJson), "이메일·관리자 메모·제보자 정보 미노출");
+  const relB = jA.data.relatedTeams.find((x) => x.id === tB.id);
+  const relC = jA.data.relatedTeams.find((x) => x.id === tC.id);
+  check(relB && relB.hostile > 0 && relC && relC.alliedConfirmed > 0, "관련 팀: 교전 상대(B)·확인된 동맹(C) 분류");
+
+  let tA2 = (await adminA.get("/api/admin/teams")).data.teams.find((t) => t.id === tA.id);
+  r = await anchorC.patch(`/api/admin/teams/${tA.id}/status`, { version: tA2.version, status: "ALERT", message: "기지 공격 받는 중 (방송국 확인)", isPublic: true, incidentId: incAB.id });
+  check(r.status === 200, "진행자 팀 상태 변경 허용", r.data);
+  tr = await anon.get(`/api/control-room/${tA.id}`);
+  check(tr.data.status.status === "ALERT" && (tr.data.status.message ?? "").startsWith("기지 공격") && tr.data.status.incident?.id === incAB.id, "팀 상태 변경 후 공개 지통실 갱신", tr.data.status);
+  ov = await anon.get("/api/control-room");
+  check(ov.data.teams.find((t) => t.id === tA.id).status === "ALERT", "종합 지통실 카드에도 반영");
+  r = await anchorC.patch(`/api/admin/teams/${tA.id}/status`, { version: tA2.version, status: "NORMAL", message: null, isPublic: true, incidentId: null });
+  check(r.status === 409, "옛 버전으로 상태 변경 → 409", r.status);
+  tA2 = (await adminA.get("/api/admin/teams")).data.teams.find((t) => t.id === tA.id);
+  r = await adminA.patch(`/api/admin/teams/${tA.id}/status`, { version: tA2.version, status: "ALERT", message: "비공개 메모", isPublic: false, incidentId: incPriv.id });
+  tr = await anon.get(`/api/control-room/${tA.id}`);
+  check(tr.data.status.status === "UNKNOWN" && tr.data.status.message === null && tr.data.status.incident === null, "상태 비공개 시 UNKNOWN·설명 숨김", tr.data.status);
+  r = await anon.patch(`/api/admin/teams/${tA.id}/status`, { version: 1, status: "ALERT", message: null, isPublic: true, incidentId: null });
+  check(r.status === 401, "비로그인 팀 상태 변경 401", r.status);
+
+  const hideT = (await adminA.get("/api/admin/teams")).data.teams.find((t) => t.id === newTeam.id);
+  await adminA.patch(`/api/admin/teams/${newTeam.id}`, { ...hideT, isPublic: false });
+  r = await anon.get(`/api/control-room/${newTeam.id}`);
+  const r2 = await anon.get(`/control-room/${newTeam.id}`);
+  ov = await anon.get("/api/control-room");
+  check(r.status === 404 && r2.status === 404 && !ov.data.teams.some((t) => t.id === newTeam.id), "비공개 팀: API·페이지 404, 목록 제외", [r.status, r2.status]);
+  r = await anon.get("/api/control-room/00000000-0000-0000-0000-000000000000");
+  const r3 = await anon.get("/control-room/not-a-team");
+  check(r.status === 404 && r3.status === 404, "존재하지 않는 팀 404", [r.status, r3.status]);
+  r = await anon.get("/api/control-room");
+  const etagCR = r.headers.get("etag");
+  r = await anon.get("/api/control-room", { headers: { "if-none-match": etagCR } });
+  check(r.status === 304, "지통실 API 변경 없으면 304", r.status);
+  r = await anon.req("GET", "/admin/team-status", { raw: true });
+  check([302, 307].includes(r.status), "관리자 팀 상태 페이지는 로그인 필요", r.status);
+  r = await anon.req("GET", "/admin/broadcast", { raw: true });
+  check([302, 307].includes(r.status), "관리자 방송 설정 페이지는 로그인 필요", r.status);
 
   // ---------- 투표 ----------
   scenario("+", "시청자 투표 중복 방지");

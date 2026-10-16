@@ -2,6 +2,7 @@ import Link from "next/link";
 import { getDb } from "@/db";
 import { getPublicLiveState } from "@/server/live";
 import { LiveBar } from "@/components/site/LiveBar";
+import { LiveStateProvider } from "@/lib/live/client";
 import { Logo } from "@/components/ui";
 import { MobileReportButton } from "@/components/site/MobileReportButton";
 
@@ -10,7 +11,7 @@ export const dynamic = "force-dynamic";
 const NAV = [
   { href: "/news", label: "뉴스" },
   { href: "/breaking", label: "속보" },
-  { href: "/war-room", label: "전쟁 상황판" },
+  { href: "/control-room", label: "지통실" },
   { href: "/clips", label: "핫 클립" },
   { href: "/teams", label: "팀·선수" },
   { href: "/reports", label: "제보" },
@@ -23,6 +24,7 @@ export default async function SiteLayout({ children }: { children: React.ReactNo
   const live = await getPublicLiveState(db);
 
   return (
+    <LiveStateProvider initial={live}>
     <div className="flex min-h-dvh flex-col">
       <header className="sticky top-0 z-40 border-b border-line bg-bg/95 backdrop-blur">
         <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-4 py-3">
@@ -91,5 +93,6 @@ export default async function SiteLayout({ children }: { children: React.ReactNo
 
       <MobileReportButton />
     </div>
+    </LiveStateProvider>
   );
 }

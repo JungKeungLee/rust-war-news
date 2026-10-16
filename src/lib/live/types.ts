@@ -16,6 +16,8 @@ export type LiveBreaking = {
 
 export type PublicLiveState = {
   serverTime: string;
+  /** 메인 방송 (상태는 관리자 수동 설정, statusSource = MANUAL) */
+  broadcast: import("@/lib/broadcast").PublicBroadcast;
   live: { isLive: boolean; url: string | null; title: string | null };
   notice: string | null;
   breaking: LiveBreaking[];

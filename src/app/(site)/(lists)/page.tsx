@@ -1,136 +1,64 @@
 import Link from "next/link";
 import { getDb } from "@/db";
-import { getActiveBreaking } from "@/server/live";
-import { getWarRoom, listArticles, listPublicClips } from "@/server/public";
+import { getControlRoomOverview } from "@/server/control-room";
+import { listArticles, listPublicClips } from "@/server/public";
 import { ArticleCard, ClipCard } from "@/components/site/cards";
-import { EmptyState, SectionTitle, TeamChip, TypeBadge, VerificationBadge } from "@/components/ui";
-import { fmtDateTime, fmtTime } from "@/lib/format";
+import { HomeBroadcast } from "@/components/site/live-ui";
+import { IncidentTimeline, TeamCard } from "@/components/site/control-room-ui";
+import { EmptyState, SectionTitle } from "@/components/ui";
 
+/**
+ * 메인 페이지 배치
+ * 1 상단 내비(레이아웃) → 2 방송 상태 → 3 16:9 방송 플레이어(1개) → 4 긴급 속보 티커
+ * → 5 팀별 지통실 미리보기 → 6 최신 뉴스 → 7 핫 클립 → 8 주요 사건 타임라인 → 9 제보 → 10 하단 정보(레이아웃)
+ */
 export default async function HomePage() {
   const db = await getDb();
-  const [featured, latest, breaking, clips, war] = await Promise.all([
-    listArticles(db, { featured: true, limit: 1 }),
-    listArticles(db, { limit: 9 }),
-    getActiveBreaking(db),
-    listPublicClips(db, { hotOnly: true, limit: 4 }),
-    getWarRoom(db),
-  ]);
-  const hero = featured[0] ?? latest[0];
-  const rest = latest.filter((a) => a.id !== hero?.id).slice(0, 6);
+  const [overview, latest, clips] = await Promise.all([getControlRoomOverview(db), listArticles(db, { limit: 6 }), listPublicClips(db, { hotOnly: true, limit: 4 })]);
+  const teamsPreview = [...overview.teams]
+    .sort((a, b) => ["ALERT", "INCIDENT", "NORMAL", "UNKNOWN"].indexOf(a.status) - ["ALERT", "INCIDENT", "NORMAL", "UNKNOWN"].indexOf(b.status) || (b.updatedAt ?? "").localeCompare(a.updatedAt ?? ""))
+    .slice(0, 6);
 
   return (
     <div className="flex flex-col gap-10">
-      {/* 1. 주요 뉴스 + 실시간 속보 */}
-      <section className="grid gap-6 lg:grid-cols-3">
-        <div className="lg:col-span-2">
-          <SectionTitle kicker="Top Story">주요 뉴스</SectionTitle>
-          {hero ? (
-            <ArticleCard a={hero} variant="hero" />
-          ) : (
-            <EmptyState title="아직 발행된 뉴스가 없습니다" desc="첫 소식은 여러분의 제보에서 시작됩니다." action={<Link href="/reports/new" className="btn btn-red mt-2">제보하기</Link>} />
-          )}
-        </div>
-        <aside className="panel flex flex-col p-4">
-          <div className="mb-3 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <span className="live-dot h-2.5 w-2.5 rounded-full bg-alert" />
-              <h2 className="text-lg font-extrabold">실시간 속보</h2>
-            </div>
-            <Link href="/breaking" className="text-sm text-muted hover:text-ink">
-              전체 →
-            </Link>
+      {/* 2~4. 방송 상태 · 플레이어 · 긴급 속보 */}
+      <div className="mx-auto w-full max-w-5xl">
+        <HomeBroadcast />
+      </div>
+
+      {/* 5. 팀별 지통실 미리보기 */}
+      <section>
+        <SectionTitle kicker="Control Room" href="/control-room" more="종합 지통실">
+          팀별 지통실 {overview.event ? <span className="text-base font-bold text-muted">· {overview.event.name}</span> : null}
+        </SectionTitle>
+        {teamsPreview.length ? (
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {teamsPreview.map((t) => (
+              <TeamCard key={t.id} t={t} />
+            ))}
           </div>
-          {breaking.length === 0 ? (
-            <p className="py-6 text-center text-sm text-muted">현재 송출 중인 속보가 없습니다.</p>
-          ) : (
-            <ul className="flex flex-col divide-y divide-line">
-              {breaking.slice(0, 6).map((b) => (
-                <li key={b.id} className="py-3">
-                  <div className="mb-1 flex flex-wrap items-center gap-1.5">
-                    {b.priority === "URGENT" && <span className="rounded bg-alert px-1.5 py-0.5 text-[0.7rem] font-black text-white">긴급</span>}
-                    <VerificationBadge status={b.verificationStatus} />
-                    <span className="font-mono text-xs text-dim">{fmtTime(b.startsAt)}</span>
-                  </div>
-                  <div className="font-bold leading-snug">{b.title}</div>
-                </li>
-              ))}
-            </ul>
-          )}
-          <Link href="/reports/new" className="btn btn-red mt-auto w-full">
-            📡 현장 제보하기
-          </Link>
-        </aside>
+        ) : (
+          <EmptyState title="공개된 참가 팀이 없습니다" />
+        )}
       </section>
 
-      {/* 2. 최신 기사 */}
+      {/* 6. 최신 뉴스 */}
       <section>
         <SectionTitle kicker="Latest" href="/news">
-          최신 기사
+          최신 뉴스
         </SectionTitle>
-        {rest.length ? (
+        {latest.length ? (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {rest.map((a) => (
+            {latest.map((a) => (
               <ArticleCard key={a.id} a={a} />
             ))}
           </div>
         ) : (
-          <EmptyState title="최신 기사가 없습니다" />
+          <EmptyState title="발행된 뉴스가 없습니다" desc="첫 소식은 여러분의 제보에서 시작됩니다." />
         )}
       </section>
 
-      {/* 3. 전쟁 현황 */}
-      <section className="grid gap-6 lg:grid-cols-3">
-        <div className="lg:col-span-2">
-          <SectionTitle kicker="Situation" href="/war-room" more="상황판">
-            전쟁 현황
-          </SectionTitle>
-          {war.incidents.length ? (
-            <ul className="panel divide-y divide-line">
-              {war.incidents.slice(0, 6).map((i) => (
-                <li key={i.id} className="flex flex-col gap-1.5 p-3 sm:flex-row sm:items-center sm:gap-3">
-                  <span className="w-24 shrink-0 font-mono text-xs text-dim">{fmtDateTime(i.occurredAt ?? i.createdAt)}</span>
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    <TypeBadge type={i.type} />
-                    <VerificationBadge status={i.verificationStatus} />
-                  </div>
-                  <span className="min-w-0 flex-1 font-semibold">{i.title}</span>
-                  <div className="flex flex-wrap gap-1">
-                    {i.teams.map((t) => (
-                      <TeamChip key={t.teamId} name={t.name} color={t.color} />
-                    ))}
-                  </div>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <EmptyState title="공개된 사건이 없습니다" />
-          )}
-        </div>
-        <div>
-          <SectionTitle kicker="Teams" href="/teams" more="팀 정보">
-            {war.event?.name ?? "참가 팀"}
-          </SectionTitle>
-          {war.teams.length ? (
-            <ol className="panel divide-y divide-line">
-              {war.teams.map((t, idx) => (
-                <li key={t.id}>
-                  <Link href={`/teams/${t.id}`} className="flex items-center gap-3 p-3 hover:bg-panel2">
-                    <span className="w-5 font-mono text-sm text-dim">{idx + 1}</span>
-                    <span className="h-8 w-1.5 rounded" style={{ background: t.color }} />
-                    <span className={`flex-1 font-bold ${t.isEliminated ? "text-dim line-through" : ""}`}>{t.name}</span>
-                    {t.statusLabel && <span className="text-xs text-muted">{t.statusLabel}</span>}
-                    <span className="font-mono font-bold">{t.score}</span>
-                  </Link>
-                </li>
-              ))}
-            </ol>
-          ) : (
-            <EmptyState title="등록된 팀이 없습니다" />
-          )}
-        </div>
-      </section>
-
-      {/* 4. 핫 클립 */}
+      {/* 7. 핫 클립 */}
       <section>
         <SectionTitle kicker="Hot Clips" href="/clips">
           핫 클립
@@ -146,7 +74,15 @@ export default async function HomePage() {
         )}
       </section>
 
-      {/* 5. 제보 CTA */}
+      {/* 8. 최근 주요 사건 */}
+      <section>
+        <SectionTitle kicker="Timeline" href="/control-room" more="지통실에서 보기">
+          최근 주요 사건
+        </SectionTitle>
+        <IncidentTimeline items={overview.timeline.slice(0, 8)} />
+      </section>
+
+      {/* 9. 제보 */}
       <section className="panel ops-grid flex flex-col items-start gap-3 border-alert/40 p-6 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <div className="panel-head text-alert">Field Report</div>

@@ -1,6 +1,7 @@
 import { and, eq, ne } from "drizzle-orm";
 import { z } from "zod";
-import { episodes, rundownItems, siteSettings } from "@/db/schema";
+import { episodes, rundownItems } from "@/db/schema";
+import { getSettings, saveBroadcast } from "@/server/settings";
 import { adminRoute, readJson } from "@/lib/api/handler";
 import { ApiError, notFound } from "@/lib/api/errors";
 import { EpisodeFields } from "@/lib/schemas";
@@ -51,10 +52,9 @@ export const PATCH = adminRoute<{ id: string }>("episodes.manage", async ({ req,
         if (other) throw new ApiError(409, `다른 회차(${other.title})가 방송 중입니다. 먼저 종료하세요.`);
         row = await bumpEpisode(tx, id, { status: "LIVE", startedAt: now });
         if (input.syncLive) {
-          await tx
-            .insert(siteSettings)
-            .values({ key: "live", value: { isLive: true, url: ep.liveUrl, title: ep.title }, updatedBy: session.userId })
-            .onConflictDoUpdate({ target: siteSettings.key, set: { value: { isLive: true, url: ep.liveUrl, title: ep.title }, updatedBy: session.userId, updatedAt: now } });
+          // 메인 방송 상태를 LIVE 로 (방송 URL 이 비어 있으면 회차의 생방송 주소 사용)
+          const { broadcast } = await getSettings(tx);
+          await saveBroadcast(tx, { ...broadcast, status: "LIVE", url: broadcast.url ?? ep.liveUrl, title: broadcast.title ?? ep.title }, session.userId);
         }
         break;
       }
@@ -63,10 +63,8 @@ export const PATCH = adminRoute<{ id: string }>("episodes.manage", async ({ req,
         await tx.update(rundownItems).set({ status: "DONE", finishedAt: now, updatedAt: now }).where(and(eq(rundownItems.episodeId, id), eq(rundownItems.status, "ON_AIR")));
         row = await bumpEpisode(tx, id, { status: "ENDED", endedAt: now, currentItemId: null, isPublic: input.publishArchive || ep.isPublic });
         if (input.syncLive) {
-          await tx
-            .insert(siteSettings)
-            .values({ key: "live", value: { isLive: false, url: null, title: null }, updatedBy: session.userId })
-            .onConflictDoUpdate({ target: siteSettings.key, set: { value: { isLive: false, url: null, title: null }, updatedBy: session.userId, updatedAt: now } });
+          const { broadcast } = await getSettings(tx);
+          await saveBroadcast(tx, { ...broadcast, status: "OFFLINE" }, session.userId);
         }
         break;
       }

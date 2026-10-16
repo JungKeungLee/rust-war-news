@@ -29,6 +29,13 @@
       "when": 1792163170748,
       "tag": "0003_flag_temp_password_anchors",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1792164226121,
+      "tag": "0004_team_public_status",
+      "breakpoints": true
     }
   ]
 }

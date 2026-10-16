@@ -1,5 +1,5 @@
 import "server-only";
-import { timingSafeEqual } from "node:crypto";
+import { createHash, timingSafeEqual } from "node:crypto";
 import { and, eq, sql, type SQL } from "drizzle-orm";
 import type { PgColumn, PgTable } from "drizzle-orm/pg-core";
 import { NextResponse, type NextRequest } from "next/server";
@@ -63,16 +63,38 @@ export async function readJson<S extends z.ZodType>(req: NextRequest, schema: S)
 }
 
 /** 공개 API. 상태 변경 요청은 동일 출처만 허용한다. */
-export function publicRoute<P = Record<string, string>>(fn: (ctx: PublicCtx<P>) => Promise<unknown>) {
+/**
+ * 공개 API. 상태 변경 요청은 동일 출처만 허용한다.
+ * opts.cacheSeconds 를 주면(GET 전용) 폴링 부하를 줄이기 위해
+ *  - 내용 기반 ETag (serverTime 제외) → 변경 없으면 304, 본문 없음
+ *  - CDN 공유 캐시 s-maxage=N (+ stale-while-revalidate) → 시청자가 많아도 DB 조회는 N초당 1회 수준
+ * 최대 반영 지연 = 폴링 주기 + N초. 실시간성이 중요한 엔드포인트는 N 을 작게 유지한다.
+ */
+export function publicRoute<P = Record<string, string>>(fn: (ctx: PublicCtx<P>) => Promise<unknown>, opts: { cacheSeconds?: number } = {}) {
   return async (req: NextRequest, ctx: RouteCtx<P>) => {
     try {
       if (MUTATING.has(req.method) && !isSameOrigin(req)) throw new ApiError(403, "허용되지 않은 요청 출처입니다.");
       const db = await getDb();
-      return toResponse(await fn({ req, params: await ctx.params, db, ipHash: ipHash(req.headers) }));
+      const result = await fn({ req, params: await ctx.params, db, ipHash: ipHash(req.headers) });
+      if (!opts.cacheSeconds || req.method !== "GET" || result instanceof Response) return toResponse(result);
+      return cachedJson(req, result, opts.cacheSeconds);
     } catch (err) {
       return errorResponse(err);
     }
   };
+}
+
+function cachedJson(req: NextRequest, payload: unknown, seconds: number): Response {
+  const { serverTime: _t, ...content } = (payload ?? {}) as Record<string, unknown>;
+  void _t;
+  const tag = `W/"${createHash("sha1").update(JSON.stringify(content)).digest("base64url")}"`;
+  const headers = {
+    ETag: tag,
+    "Cache-Control": `public, max-age=0, s-maxage=${seconds}, stale-while-revalidate=${seconds}`,
+    Vary: "Accept-Encoding",
+  };
+  if (req.headers.get("if-none-match") === tag) return new Response(null, { status: 304, headers });
+  return NextResponse.json(payload, { headers });
 }
 
 function safeEqual(a: string, b: string) {

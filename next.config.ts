@@ -10,6 +10,7 @@ const frameSrc = [
   "https://chzzk.naver.com",
   "https://vod.sooplive.co.kr",
   "https://play.sooplive.co.kr",
+  "https://play.sooplive.com",
   "https://clips.twitch.tv",
   "https://player.twitch.tv",
 ].join(" ");

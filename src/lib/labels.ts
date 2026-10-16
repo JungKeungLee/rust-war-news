@@ -1,12 +1,33 @@
-export const INCIDENT_TYPES = ["BATTLE", "RAID", "ALLIANCE", "BETRAYAL", "INCIDENT", "OTHER"] as const;
+export const INCIDENT_TYPES = ["RAID", "BATTLE", "DEFENSE", "ALLIANCE", "BETRAYAL", "INCIDENT", "OTHER"] as const;
 export type IncidentType = (typeof INCIDENT_TYPES)[number];
 export const INCIDENT_TYPE_LABEL: Record<IncidentType, string> = {
-  BATTLE: "전투",
   RAID: "레이드",
+  BATTLE: "교전",
+  DEFENSE: "방어",
   ALLIANCE: "동맹",
   BETRAYAL: "배신",
-  INCIDENT: "사건",
+  INCIDENT: "사건·사고",
   OTHER: "기타",
+};
+/** 교전 상대로 분류하는 사건 유형 */
+export const HOSTILE_INCIDENT_TYPES: readonly IncidentType[] = ["RAID", "BATTLE", "DEFENSE", "BETRAYAL"];
+
+export const TEAM_STATUS = ["UNKNOWN", "NORMAL", "INCIDENT", "ALERT"] as const;
+export type TeamStatus = (typeof TEAM_STATUS)[number];
+export const TEAM_STATUS_LABEL: Record<TeamStatus, string> = {
+  UNKNOWN: "확인된 정보 없음",
+  NORMAL: "특이사항 없음",
+  INCIDENT: "사건 발생",
+  ALERT: "긴급 상황",
+};
+
+export const BROADCAST_STATUS = ["LIVE", "STANDBY", "OFFLINE", "UNKNOWN"] as const;
+export type BroadcastStatus = (typeof BROADCAST_STATUS)[number];
+export const BROADCAST_STATUS_LABEL: Record<BroadcastStatus, string> = {
+  LIVE: "방송 중",
+  STANDBY: "방송 준비 중",
+  OFFLINE: "방송 종료",
+  UNKNOWN: "상태 확인 불가",
 };
 
 export const VERIFICATION = ["UNVERIFIED", "VERIFYING", "CONFIRMED", "DISPUTED", "FALSE"] as const;
