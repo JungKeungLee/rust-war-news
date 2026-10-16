@@ -31,9 +31,9 @@ async function main() {
       const password = generatePassword();
       [user] = await db
         .insert(users)
-        .values({ email, displayName: name, passwordHash: await hashPassword(password), color: COLORS[i % COLORS.length] })
+        .values({ email, displayName: name, passwordHash: await hashPassword(password), color: COLORS[i % COLORS.length], mustChangePassword: true })
         .returning();
-      console.log(`진행자 생성: ${name} <${email}> 임시 비밀번호: ${password}`);
+      console.log(`진행자 생성: ${name} <${email}> 임시 비밀번호: ${password}  (첫 로그인 시 변경 필수)`);
     } else {
       console.log(`기존 계정 사용: ${user.displayName} <${email}>`);
     }

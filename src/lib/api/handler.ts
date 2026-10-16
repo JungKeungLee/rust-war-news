@@ -9,6 +9,7 @@ import { auditLogs } from "@/db/schema";
 import { loadSessionByToken, SESSION_COOKIE, type SessionUser } from "@/lib/auth/session";
 import { hasPermission, type Permission } from "@/lib/auth/permissions";
 import { ipHash, isSameOrigin } from "@/lib/security/request";
+import { safeErrorForLog } from "@/lib/privacy";
 import { ApiError, ConflictError, notFound } from "./errors";
 
 const MUTATING = new Set(["POST", "PUT", "PATCH", "DELETE"]);
@@ -37,7 +38,8 @@ export function errorResponse(err: unknown): NextResponse {
   const pgCode = (err as { code?: string; cause?: { code?: string } })?.code ?? (err as { cause?: { code?: string } })?.cause?.code;
   if (pgCode === "23505") return NextResponse.json({ error: "이미 존재하는 항목입니다." }, { status: 409 });
   if (pgCode === "23503") return NextResponse.json({ error: "연결된 데이터가 있어 처리할 수 없거나 참조 대상이 없습니다." }, { status: 409 });
-  console.error("[api]", err);
+  // 원본 오류에는 쿼리 파라미터(비밀번호 해시·이메일 등)가 들어 있을 수 있어 요약본만 기록
+  console.error("[api]", JSON.stringify(safeErrorForLog(err)));
   return NextResponse.json({ error: "서버 오류가 발생했습니다." }, { status: 500 });
 }
 
@@ -82,11 +84,19 @@ function safeEqual(a: string, b: string) {
 /**
  * 관리자 API. 세션 인증 → 권한 확인 → (상태 변경 시) Origin + CSRF 토큰 검사 순으로 처리한다.
  */
-export function adminRoute<P = Record<string, string>>(perm: Permission, fn: (ctx: AdminCtx<P>) => Promise<unknown>) {
+export function adminRoute<P = Record<string, string>>(
+  perm: Permission,
+  fn: (ctx: AdminCtx<P>) => Promise<unknown>,
+  opts: { allowWhilePasswordChangeRequired?: boolean } = {},
+) {
   return async (req: NextRequest, ctx: RouteCtx<P>) => {
     try {
       const session = await loadSessionByToken(req.cookies.get(SESSION_COOKIE)?.value);
       if (!session) throw new ApiError(401, "로그인이 필요합니다.");
+      // 임시 비밀번호 계정은 비밀번호를 바꾸기 전까지 다른 관리자 기능을 쓸 수 없다
+      if (session.mustChangePassword && !opts.allowWhilePasswordChangeRequired) {
+        throw new ApiError(403, "임시 비밀번호입니다. 먼저 비밀번호를 변경하세요.", { code: "PASSWORD_CHANGE_REQUIRED" });
+      }
       if (!hasPermission(session.roles, perm)) throw new ApiError(403, "이 작업을 수행할 권한이 없습니다.");
       if (MUTATING.has(req.method)) {
         if (!isSameOrigin(req)) throw new ApiError(403, "허용되지 않은 요청 출처입니다.");

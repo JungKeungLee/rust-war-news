@@ -43,7 +43,7 @@ export const POST = publicRoute(async ({ req, db, ipHash }) => {
   await db.update(users).set({ lastLoginAt: new Date() }).where(eq(users.id, user.id));
   await db.insert(auditLogs).values({ userId: user.id, action: "LOGIN", entityType: "user", entityId: user.id, ipHash });
 
-  const res = NextResponse.json({ ok: true }, { headers: { "Cache-Control": "no-store" } });
+  const res = NextResponse.json({ ok: true, mustChangePassword: user.mustChangePassword }, { headers: { "Cache-Control": "no-store" } });
   res.cookies.set(SESSION_COOKIE, token, sessionCookieOptions(expiresAt));
   return res;
 });

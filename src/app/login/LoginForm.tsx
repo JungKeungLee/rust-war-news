@@ -19,7 +19,8 @@ export function LoginForm({ next }: { next: string }) {
     const json = await res.json().catch(() => ({}));
     setBusy(false);
     if (!res.ok) return setError(json.error ?? "로그인에 실패했습니다.");
-    location.href = next;
+    // 임시 비밀번호 계정은 비밀번호 변경 화면으로
+    window.location.assign(json.mustChangePassword ? `/account/password?next=${encodeURIComponent(next)}` : next);
   }
 
   return (

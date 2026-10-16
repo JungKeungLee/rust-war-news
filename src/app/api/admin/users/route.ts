@@ -6,10 +6,11 @@ import { ApiError } from "@/lib/api/errors";
 import { ROLE_CODES } from "@/lib/auth/permissions";
 import { hashPassword, passwordPolicyError } from "@/lib/security/password";
 import { zColor, zText } from "@/lib/validation";
+import { maskEmail } from "@/lib/privacy";
 
 export const GET = adminRoute("users.manage", async ({ db }) => {
   const list = await db
-    .select({ id: users.id, email: users.email, displayName: users.displayName, color: users.color, isActive: users.isActive, lastLoginAt: users.lastLoginAt, createdAt: users.createdAt })
+    .select({ id: users.id, email: users.email, displayName: users.displayName, color: users.color, isActive: users.isActive, mustChangePassword: users.mustChangePassword, passwordChangedAt: users.passwordChangedAt, lastLoginAt: users.lastLoginAt, createdAt: users.createdAt })
     .from(users)
     .orderBy(asc(users.createdAt));
   const roleRows = await db.select({ userId: userRoles.userId, code: roles.code }).from(userRoles).innerJoin(roles, eq(roles.id, userRoles.roleId));
@@ -35,11 +36,11 @@ export const POST = adminRoute("users.manage", async ({ req, db, audit }) => {
   return db.transaction(async (tx) => {
     const [u] = await tx
       .insert(users)
-      .values({ email: input.email, displayName: input.displayName, passwordHash, color: input.color ?? null })
+      .values({ email: input.email, displayName: input.displayName, passwordHash, color: input.color ?? null, mustChangePassword: true })
       .returning({ id: users.id });
     const roleRows = await tx.select().from(roles).where(inArray(roles.code, input.roles));
     await tx.insert(userRoles).values(roleRows.map((r) => ({ userId: u.id, roleId: r.id })));
-    await audit("USER_CREATE", "user", u.id, { email: input.email, roles: input.roles }, tx);
+    await audit("USER_CREATE", "user", u.id, { email: maskEmail(input.email), roles: input.roles, temporaryPassword: true }, tx);
     return { id: u.id };
   });
 });

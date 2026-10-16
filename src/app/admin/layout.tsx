@@ -14,6 +14,7 @@ export const metadata: Metadata = { title: { default: "관리자", template: "%s
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const session = await getCurrentSession();
   if (!session) redirect("/login?next=/admin");
+  if (session.mustChangePassword) redirect("/account/password");
 
   if (!hasPermission(session.roles, "admin.access")) {
     return (
@@ -47,7 +48,10 @@ export default async function AdminLayout({ children }: { children: React.ReactN
           <div className="hidden border-t border-line p-4 text-xs text-muted lg:block">
             <div className="font-bold text-ink">{session.displayName}</div>
             <div className="mt-0.5">{session.roles.map((r) => ROLE_LABELS[r]).join(", ")}</div>
-            <div className="mt-3">
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Link href="/account/password" className="btn btn-sm">
+                비밀번호 변경
+              </Link>
               <LogoutButton />
             </div>
           </div>

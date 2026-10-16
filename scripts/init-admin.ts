@@ -38,7 +38,7 @@ async function main() {
 
   const [user] = await db
     .insert(users)
-    .values({ email, passwordHash: await hashPassword(password), displayName: name })
+    .values({ email, passwordHash: await hashPassword(password), displayName: name, passwordChangedAt: new Date() })
     .returning({ id: users.id });
   await db.insert(userRoles).values({ userId: user.id, roleId: superRole.id });
   await db.insert(auditLogs).values({ userId: user.id, action: "INIT_ADMIN", entityType: "user", entityId: user.id });

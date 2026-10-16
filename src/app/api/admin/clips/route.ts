@@ -51,5 +51,7 @@ export const POST = adminRoute("clips.manage", async ({ req, db, session, audit 
     })
     .returning();
   await audit("CLIP_CREATE", "clip", row.id, { title: row.title });
-  return { clip: row };
+  const { submitterIpHash: _ip, ...clip } = row;
+  void _ip;
+  return { clip };
 });

@@ -1,6 +1,6 @@
 import "server-only";
 import { createHash, randomBytes } from "node:crypto";
-import { and, eq, gt, sql } from "drizzle-orm";
+import { and, eq, gt, ne, sql } from "drizzle-orm";
 import { cookies } from "next/headers";
 import { getDb } from "@/db";
 import { roles, sessions, userRoles, users } from "@/db/schema";
@@ -18,6 +18,8 @@ export type SessionUser = {
   displayName: string;
   color: string | null;
   roles: RoleCode[];
+  /** 임시 비밀번호 상태면 true — 비밀번호 변경 외 기능 차단 */
+  mustChangePassword: boolean;
 };
 
 const sha256 = (v: string) => createHash("sha256").update(v).digest("hex");
@@ -62,6 +64,7 @@ export async function loadSessionByToken(token: string | undefined | null): Prom
       displayName: users.displayName,
       color: users.color,
       isActive: users.isActive,
+      mustChangePassword: users.mustChangePassword,
     })
     .from(sessions)
     .innerJoin(users, eq(users.id, sessions.userId))
@@ -88,6 +91,7 @@ export async function loadSessionByToken(token: string | undefined | null): Prom
     displayName: row.displayName,
     color: row.color,
     roles: roleRows.map((r) => r.code),
+    mustChangePassword: row.mustChangePassword,
   };
 }
 
@@ -101,6 +105,12 @@ export async function destroySession(token: string | undefined) {
   if (!token) return;
   const db = await getDb();
   await db.delete(sessions).where(eq(sessions.id, sha256(token)));
+}
+
+/** 비밀번호 변경 시: 현재 세션만 남기고 다른 기기 세션 모두 종료 */
+export async function destroyOtherSessions(userId: string, keepSessionId: string) {
+  const db = await getDb();
+  await db.delete(sessions).where(and(eq(sessions.userId, userId), ne(sessions.id, keepSessionId)));
 }
 
 export async function destroyUserSessions(userId: string) {

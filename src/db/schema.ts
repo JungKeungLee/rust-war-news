@@ -77,6 +77,9 @@ export const users = pgTable(
     /** 진행자 표시 색상 (프롬프터/큐시트 구분용) */
     color: text("color"),
     isActive: boolean("is_active").notNull().default(true),
+    /** 임시 비밀번호(관리자 발급·재설정) 상태. true 면 로그인 후 비밀번호 변경 전까지 다른 기능 사용 불가 */
+    mustChangePassword: boolean("must_change_password").notNull().default(false),
+    passwordChangedAt: ts("password_changed_at"),
     lastLoginAt: ts("last_login_at"),
     createdAt: createdAt(),
     updatedAt: updatedAt(),

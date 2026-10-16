@@ -15,6 +15,20 @@
       "when": 1792148553570,
       "tag": "0001_seed_reference_data",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1792163158518,
+      "tag": "0002_user_password_state",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1792163170748,
+      "tag": "0003_flag_temp_password_anchors",
+      "breakpoints": true
     }
   ]
 }

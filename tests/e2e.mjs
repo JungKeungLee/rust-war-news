@@ -91,8 +91,12 @@ async function main() {
   const editor2Email = `editor2-${stamp}@rwn.local`;
   await adminA.post("/api/admin/users", { email: editor2Email, displayName: "편집자2", password: "Editor2Pass99", roles: ["EDITOR", "OPERATOR"], color: "#22c55e" });
   await adminB.login(editor2Email, "Editor2Pass99");
+  if ((await adminB.post("/api/account/password", { currentPassword: "Editor2Pass99", newPassword: "DeskEditor2025" })).status !== 200) throw new Error("편집자2 비밀번호 변경 실패");
   await adminA.patch(`/api/admin/users/${nan.id}`, { password: "NanwonyPass99" });
   await anchorC.login(nan.email, "NanwonyPass99");
+  // 관리자가 재설정한 비밀번호는 임시 비밀번호 → 본인이 먼저 변경해야 다른 기능 사용 가능
+  const pc = await anchorC.post("/api/account/password", { currentPassword: "NanwonyPass99", newPassword: "AnchorDesk2025" });
+  if (pc.status !== 200) throw new Error(`진행자 비밀번호 변경 실패: ${pc.status} ${JSON.stringify(pc.data)}`);
   const teamsData = (await adminA.get("/api/admin/teams")).data;
   const activeEvent = teamsData.events.find((e) => e.isActive);
   const team1 = teamsData.teams.find((t) => t.eventId === activeEvent.id);
@@ -432,6 +436,79 @@ async function main() {
   check(r.status === 200, "다시 공개");
 
   // ---------- 17 ----------
+  // ---------- 계정 보안 ----------
+  scenario("S1", "임시 비밀번호 최초 로그인 시 변경 강제");
+  const tmpEmail = `newanchor-${stamp}@rwn.local`;
+  r = await adminA.post("/api/admin/users", { email: tmpEmail, displayName: `신규진행자${stamp}`, password: "TempPass2025", roles: ["ANCHOR"], color: "#eab308" });
+  check(r.status === 200, "관리자가 임시 비밀번호로 계정 생성", r.data);
+  const newbie = client("198.51.100.20");
+  const newbie2 = client("198.51.100.21");
+  r = await newbie.post("/api/auth/login", { email: tmpEmail, password: "TempPass2025" });
+  check(r.status === 200 && r.data.mustChangePassword === true, "로그인 응답에 비밀번호 변경 필요 표시", r.data);
+  await newbie.login(tmpEmail, "TempPass2025");
+  await newbie2.login(tmpEmail, "TempPass2025");
+  r = await newbie.get("/api/admin/control-room");
+  check(r.status === 403 && r.data.code === "PASSWORD_CHANGE_REQUIRED", "변경 전 관리자 API 차단(403)", r.data);
+  r = await newbie.req("GET", "/admin/control-room", { raw: true });
+  check([302, 303, 307, 308].includes(r.status) && (r.headers.get("location") ?? "").includes("/account/password"), "변경 전 관리자 화면 → 비밀번호 변경 화면으로 이동", [r.status, r.headers.get("location")]);
+  r = await newbie.get("/account/password");
+  check(r.status === 200 && r.data.includes("임시 비밀번호"), "비밀번호 변경 화면 표시");
+  r = await newbie.post("/api/account/password", { currentPassword: "WrongPass2025", newPassword: "BrandNew2025x" });
+  check(r.status === 400, "현재 비밀번호 틀리면 거부", r.data);
+  r = await newbie.post("/api/account/password", { currentPassword: "TempPass2025", newPassword: "short1" });
+  check(r.status === 400, "약한 새 비밀번호 거부", r.data);
+  r = await newbie.post("/api/account/password", { currentPassword: "TempPass2025", newPassword: "TempPass2025" });
+  check(r.status === 400, "이전과 같은 비밀번호 거부", r.data);
+  r = await newbie.post("/api/account/password", { currentPassword: "TempPass2025", newPassword: "BrandNew2025x" }, { headers: { "x-csrf-token": "" } });
+  check(r.status === 403, "CSRF 토큰 없으면 거부", r.data);
+  r = await newbie.post("/api/account/password", { currentPassword: "TempPass2025", newPassword: "BrandNew2025x" });
+  check(r.status === 200, "비밀번호 변경 성공", r.data);
+  r = await newbie.get("/api/admin/control-room");
+  check(r.status === 200, "변경 후 관리자 기능 사용 가능", r.status);
+  r = await newbie2.get("/api/auth/me");
+  check(r.status === 401, "다른 기기 세션은 종료됨", r.status);
+  r = await client("198.51.100.22").post("/api/auth/login", { email: tmpEmail, password: "TempPass2025" });
+  check(r.status === 401, "옛 임시 비밀번호로 로그인 불가", r.status);
+  r = await client("198.51.100.23").post("/api/auth/login", { email: tmpEmail, password: "BrandNew2025x" });
+  check(r.status === 200 && r.data.mustChangePassword === false, "새 비밀번호로 로그인, 변경 요구 해제", r.data);
+
+  scenario("S2", "관리자 비밀번호 재설정 점검");
+  const usersNow = (await adminA.get("/api/admin/users")).data.users;
+  const newbieUser = usersNow.find((u) => u.email === tmpEmail);
+  check(newbieUser && JSON.stringify(newbieUser).indexOf("passwordHash") === -1 && JSON.stringify(newbieUser).indexOf("scrypt$") === -1, "계정 목록 응답에 비밀번호 해시 없음");
+  r = await adminA.patch(`/api/admin/users/${newbieUser.id}`, { password: "weak" });
+  check(r.status === 400, "재설정 비밀번호도 정책 적용", r.data);
+  r = await adminA.patch(`/api/admin/users/${newbieUser.id}`, { password: "ResetPass2025" });
+  check(r.status === 200, "관리자 재설정 성공", r.data);
+  r = await newbie.get("/api/auth/me");
+  check(r.status === 401, "재설정 시 대상 계정 기존 세션 모두 종료", r.status);
+  r = await client("198.51.100.24").post("/api/auth/login", { email: tmpEmail, password: "ResetPass2025" });
+  check(r.status === 200 && r.data.mustChangePassword === true, "재설정 비밀번호는 임시 → 다음 로그인 시 변경 요구", r.data);
+  r = await adminB.patch(`/api/admin/users/${newbieUser.id}`, { password: "Hijack2025xx" });
+  check(r.status === 403, "SUPER_ADMIN 아닌 편집자는 재설정 불가", r.status);
+
+  scenario("S3", "이메일 변경 + 기존 연결 유지 (김옥독 예시 이메일 교체)");
+  const kimBefore = (await adminA.get("/api/admin/users")).data.users.find((u) => u.id === kim.id);
+  const kimNewEmail = `kimokdok-real-${stamp}@rwn.local`;
+  r = await adminA.patch(`/api/admin/users/${kim.id}`, { email: kimNewEmail.toUpperCase() });
+  check(r.status === 200, "김옥독 이메일 변경 (대문자 입력 → 소문자 저장)", r.data);
+  const kimAfter = (await adminA.get("/api/admin/users")).data.users.find((u) => u.id === kim.id);
+  check(kimAfter.email === kimNewEmail && kimAfter.id === kimBefore.id && kimAfter.roles.join() === kimBefore.roles.join(), "계정 ID·역할 유지, 새 이메일 저장");
+  r = await adminA.patch(`/api/admin/users/${newbieUser.id}`, { email: kimNewEmail.toUpperCase() });
+  check(r.status === 409, "다른 계정과 같은 이메일(대소문자 무시) 거부", r.data);
+  r = await adminA.patch(`/api/admin/users/${newbieUser.id}`, { email: "not-an-email" });
+  check(r.status === 400, "이메일 형식 검증", r.data);
+  const epAfter = (await adminA.get(`/api/admin/episodes/${epId}`)).data;
+  check(epAfter.anchors.some((a) => a.id === kim.id) && epAfter.items.some((i) => i.anchorId === kim.id && i.anchorName === kim.displayName), "회차 진행자 배정·큐시트 담당 연결 유지");
+  check(epAfter.items.some((i) => i.scripts.some((sc) => sc.anchorId === kim.id && sc.body.startsWith("김옥독"))), "김옥독 대본 연결 유지");
+  r = await adminA.patch(`/api/admin/users/${kim.id}`, { password: "KimTemp2025x" });
+  r = await client("198.51.100.25").post("/api/auth/login", { email: kimNewEmail, password: "KimTemp2025x" });
+  check(r.status === 200, "새 이메일로 로그인 가능", r.status);
+  r = await client("198.51.100.26").post("/api/auth/login", { email: kimBefore.email, password: "KimTemp2025x" });
+  check(r.status === 401, "옛 이메일로는 로그인 불가", r.status);
+  r = await viewer.get("/archive");
+  check(r.data.includes(epTitle), "공개 아카이브 정상 (연결 데이터 유지)");
+
   scenario(17, "권한 없는 사용자의 관리자 API 접근 차단");
   r = await anon.get("/api/admin/reports");
   check(r.status === 401, "비로그인 → 401", r.status);
