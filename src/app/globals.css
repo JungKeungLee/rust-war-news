@@ -1,26 +1,172 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+@theme {
+  --color-bg: #070b14;
+  --color-panel: #0e1522;
+  --color-panel2: #141d2e;
+  --color-line: #233049;
+  --color-ink: #f3f5f9;
+  --color-muted: #9aa6bd;
+  --color-dim: #6b7790;
+  --color-alert: #e5202e;
+  --color-alert-deep: #8f0f1b;
+  --color-warn: #f5a524;
+  --color-ok: #22c55e;
+  --color-intel: #3b82f6;
+
+  --font-sans: "Pretendard", "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", system-ui, sans-serif;
+  --font-mono: ui-monospace, "SFMono-Regular", "Cascadia Mono", Consolas, monospace;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html {
+  color-scheme: dark;
+  -webkit-text-size-adjust: 100%;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--color-bg);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+}
+
+/* 커스텀 컴포넌트 클래스는 components 레이어에 두어 Tailwind 유틸리티(hidden, sm:* 등)가 우선하도록 한다 */
+@layer components {
+/* 작전실 격자 배경 (사이트 전용, 오버레이에는 적용하지 않음) */
+.ops-grid {
+  background-image:
+    linear-gradient(rgba(59, 130, 246, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(59, 130, 246, 0.05) 1px, transparent 1px);
+  background-size: 32px 32px;
+}
+
+/* 패널 모서리 강조 */
+.panel {
+  background: var(--color-panel);
+  border: 1px solid var(--color-line);
+  border-radius: 6px;
+}
+
+.panel-head {
+  font-family: var(--font-sans);
+  font-weight: 700;
+  font-size: 0.72rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--color-muted);
+}
+
+.ticker-track {
+  display: inline-flex;
+  gap: 3rem;
+  white-space: nowrap;
+  animation: ticker 40s linear infinite;
+}
+.ticker-track:hover {
+  animation-play-state: paused;
+}
+@keyframes ticker {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+.live-dot {
+  animation: blink 1.6s ease-in-out infinite;
+}
+@keyframes blink {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ticker-track,
+  .live-dot {
+    animation: none;
+  }
+}
+
+@layer components {
+/* 폼 기본 */
+.field {
+  width: 100%;
+  background: #0a111d;
+  border: 1px solid var(--color-line);
+  border-radius: 6px;
+  padding: 0.6rem 0.75rem;
+  color: var(--color-ink);
+  font-size: 1rem;
+}
+.field:focus {
+  outline: 2px solid var(--color-intel);
+  outline-offset: 0;
+  border-color: transparent;
+}
+.field:disabled {
+  opacity: 0.6;
+}
+label.lbl {
+  display: block;
+  font-size: 0.85rem;
+  color: var(--color-muted);
+  margin-bottom: 0.3rem;
+  font-weight: 600;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  border-radius: 6px;
+  padding: 0.55rem 1rem;
+  font-weight: 700;
+  font-size: 0.92rem;
+  border: 1px solid var(--color-line);
+  background: var(--color-panel2);
+  color: var(--color-ink);
+  cursor: pointer;
+  min-height: 40px;
+}
+.btn:hover {
+  border-color: #3a4a68;
+}
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.btn-red {
+  background: var(--color-alert);
+  border-color: var(--color-alert);
+  color: #fff;
+}
+.btn-red:hover {
+  background: #c81824;
+}
+.btn-blue {
+  background: var(--color-intel);
+  border-color: var(--color-intel);
+  color: #fff;
+}
+.btn-ghost {
+  background: transparent;
+}
+.btn-sm {
+  padding: 0.3rem 0.6rem;
+  font-size: 0.8rem;
+  min-height: 32px;
+}
+
+.prose-news p {
+  margin: 0 0 1.1em;
+  line-height: 1.85;
+  font-size: 1.06rem;
+}
 }
